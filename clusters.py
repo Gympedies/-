@@ -21,3 +21,8 @@ def pearson(v1,v2):
     if den == 0 : return 0
     #可以使相关度越大 距离越小
     return 1.0-num/den
+class bicluster:
+    def __init__(self, vec, left=None,right=None,distance=0.0,id=None):
+        self.left = left
+        self.right = right
+        
