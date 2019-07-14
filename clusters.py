@@ -25,4 +25,15 @@ class bicluster:
     def __init__(self, vec, left=None,right=None,distance=0.0,id=None):
         self.left = left
         self.right = right
+        self.vec = vec
+        self.id = id
+        self.distance = distance
+def hcluster(rows, distance=pearson):
+    distance=[]
+    currentclusterid = -1
+    clust = [bicluster(rows[i],id=i) for i in range(len(rows))]
+    while len(clust)>1:
+        lowestpair = (0,1)
+        closest = distance(clust[0].vec,clust[1].vec)
+    
         
