@@ -1,0 +1,23 @@
+def readfile(filename):
+    lines = [line for line in open(filename)]
+    colnames = lines[0].strip('\n').split('\t')[1:]
+    rowsname = []
+    data = []
+    for line in lines[1:]:
+        p = line.strip().split('\t')
+        rowsname.append(p[0])
+        data.append([float(x) for x in p[1:]])
+    return rowsname,colnames,data
+from math import sqrt
+#相关系数
+def pearson(v1,v2):
+    sum1 = sum(v1)
+    sum2 = sum(v2)
+    sunm1Sq = sqrt([pow(v,2) for v in v1])
+    sunm2Sq = sqrt([pow(v,2) for v in v2])
+    psum = sum([v1[i]*v2[i] for i in range(len(v1))])
+    num = psum - (sum1*sum2/len(v1))
+    den = sqrt((sunm1Sq-pow(sum1,2)/len(v1))*(sunm2Sq-pow(sum2,2)/len(v1)))
+    if den == 0 : return 0
+    #可以使相关度越大 距离越小
+    return 1.0-num/den
