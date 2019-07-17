@@ -62,6 +62,16 @@ class crawler:
     def createindextable(self):
         self.con.execute('')
         #建立数据库语句
+        self.con.execute('create table urllist(url)')
+        self.con.execute('create table wordlist(word)')
+        self.con.execute('create table wordlocation(urlid,wordid,location)')
+        self.con.execute('create table link(fromid,toid)')
+        self.con.execute('create table linkwords(wordid,linkid)')
+        self.con.execute('create index wordidx on wordlist(word)')
+        self.con.execute('create index urlidx on urllist(url)')
+        self.con.execute('create index wordurlidx on wordlocation(wordid)')
+        self.con.execute('create index urltoidx on link(toid)')
+        self.con.execute('create index urlfromidx on link(fromid)')
         self.dbcommit()
     def gettextonly(self,soup):
         v = soup.string #获取标签内的文字 如果有多个标签有文字 返回None
@@ -109,6 +119,7 @@ class crawler:
         return False
 if __name__ == "__main__":
     crawlers = crawler('searchindex.db')
+    crawlers.createindextable()
     pages = "" #urlopen貌似不能直接访问https的网站
     crawlers.crawl(pages)
 #搜索
@@ -118,4 +129,104 @@ class searcher:
     def __del__(self):
         self.con.close()
     def getmatchrows(self,q):
+        fieldlist = 'w0.urlid'
+        tablelist = ''
+        clauselist = ''
+        wordids = []
+        words = q.split(' ')
+        tablenumber = 0
+        for word in words:
+            wordrow = self.con.execute("select rowid from wordlist where word = '%s" % word).fetchone()
+            if wordrow!=None:
+                wordid = wordrow[0]
+                wordids.append(wordid)
+                if tablenumber>0:
+                    tablelist+=','
+                    clauselist+=' and '
+                    clauselist+='w%d.urlid=w%d.urlid and ' % (tablenumber-1,tablenumber)
+                fieldlist+=',w%d.location' % tablenumber
+                tablelist+='wordlocation w%d' % tablenumber
+                clauselist+='w%d.wordid=%d' %(tablenumber,wordid)
+                tablenumber+=1
+        #多词查询
+        fullquery = 'select %s from %s where %s' % (fieldlist,tablelist,clauselist)
+        cur = self.con.execute(fullquery)
+        rows = [row for row in cur]
+        return rows,wordids
+    #基于内容的排名 单词频度 文档位置 单词距离
+    def getscoredlist(self,rows,wordids):
+        totalscores = dict([(row[0],0) for row in rows])
+        #评价函数
+        weights = [(1.0,self.normalizescores(rows))]
+
+        for (weight,scores) in weights:
+            for url in totalscores:
+                totalscores[url]+=weight*scores[url]
+        return totalscores
+    def geturlname(self,id):
+        return self.con.execute(
+            "select url from urllist where rowid=%d" % id).fetchone()[0]
+    def query(self,q):
+        row,wordids = self.getmatchrows(q)
+        scores = self.getscoredlist(row,wordids)
+        rankedscores = sorted([(score,url) for (score,url) in scores.items()],reverse = 1)
+        for (score,urlid) in rankedscores:
+            print ('%f\t%s' % (score,self.geturlname(urlid)))
+    #归一化函数
+    def normalizescores(self,scores,smallIsBetter=0):
+        vsmall = 0.00001 #防止被0整除
+        if smallIsBetter:
+            minscore = min(scores.values())
+            return dict([(u,float(minscore)/max(vsmall,1)) for (u,l) in scores.items()])
+        else:
+            maxscore = max(scores.values())
+            if maxscore==0 : maxscore=vsmall
+            return dict([(u,float(c)/maxscore)for (u,c) in scores.items()])
+    #单词频度
+    def frequrcyscore(self,rows):
+        counts = dict([(row[0],0) for row in rows])
+        for row in rows:counts[row[0]]+=1
+        return self.normalizescores(counts)
+    #文档位置
+    def locationscore(self,rows):
+        locations = dict([(row[0],1000000) for row in rows])
+        for row in rows:
+            loc = sum(row[1:])#单词可能出现在多个位置
+            if loc<locations[row[0]]: locations[row[0]] = loc
+        return self.normalizescores(locations,smallIsBetter=1)
+    #单词距离
+    def distancescore(self,rows):
+        if len(rows[0])<=2 : return dict([(row[0],1.0)for row in rows])
+        mindistance = dict([(row[0],1000000)for row in rows])
+        for row in rows:
+            dist = sum([abs(row[i]-row[i-1]) for i in range(2,len(row))])
+            if dist<mindistance[row[0]]:mindistance[row[0]]=dist
+        return self.normalizescores(mindistance,smallIsBetter=1)
+    #利用外部指回链接
+    def inboundlinkscore(self,rows):
+        uniqueurl = set([row[0] for row in rows])
+        inboundcount = dict([(u,self.con.execute('select count(*) from link where toid = %d' % u).fetchone([0]))] for u in uniqueurl)
+        return self.normalizescores(inboundcount)
+    #pageRank算法
+    def calculatepagerank(self,iterations=20):
+        #清除当前表格
+        self.con.execute('drop table if exists pagerank')
+        self.con.execute('create table pagerank(urlid primary key,score)')
+        #初始化每个url，使其等于1
+        self.con.execute('insert into pagerank select rowid,1.0 from urllist')
+        self.con.commit()
+        for i in range(iterations):
+            print("iteration: %d" % (i))
+            for(urlid,) in self.con.execute('select rowid from urllist'):
+                pr = 0.15
+                #遍历指向当前网页的所有其他网页
+                for(linker, ) in self.con.execute('select distinct fromid from link where toid=%d' % urlid):
+                    #获取rank值
+                    linkingpr = self.con.execute('select score from pagerank where urlid=%d' % linker).fetchone()[0]
+                    #获取链接总数
+                    linkscount = self.con.execute('select count(*) from link where fromid=%d' % linker).fetchone()[0]
+                    pr+=0.85*(linkingpr/linkscount)
+                self.con.execute('update pagerank set score = %f where urlid=%d' % (pr,urlid))
+            self.dbcommit()
         
+    
