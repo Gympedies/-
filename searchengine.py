@@ -228,5 +228,15 @@ class searcher:
                     pr+=0.85*(linkingpr/linkscount)
                 self.con.execute('update pagerank set score = %f where urlid=%d' % (pr,urlid))
             self.dbcommit()
-        
-    
+    #使用文本链接的评价标准
+    def linktextscore(self,rows,wordids):
+        linkscores = dict([(row[0],0) for row in rows])    
+        for wordid in wordids:
+            cur = self.con.execute('select link.fromid,link.toid from linkwords,link where wordid=%d and linkwords.linkid = link.rowid' % wordid)
+            for fromid,toid in cur:
+                if toid in linkscores:
+                    pr=self.con.execute('select score from pagerank where urlid=%d' % fromid).fetchone()[0]
+                    linkscores[toid]+=pr
+                maxscore=max(linkscores.values())
+                normalizescores=dict([(u,float(1)/maxscore) for (u,l) in linkscores.items()])
+                return normalizescores    
