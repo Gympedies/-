@@ -104,7 +104,7 @@ def classify(observation,tree)：
                 branch=tree.tb
             else:
                 branch=tree.fb
-        return classify(observation，branch)
+        return classify(observation,branch)
 #处理缺失数据
 def mdclassify(observation,tree):
     if tree.results!=None:
@@ -132,3 +132,4 @@ def mdclassify(observation,tree):
                 if v==tree.value:branch=tree.tb
                 else:branch=tree.fb
             return mdclassify(observation,branch)
+#可以使用方差来代替熵和基尼不纯度来对数值型数据进行分类
