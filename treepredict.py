@@ -1,3 +1,11 @@
+class dicisionnode:
+    def __init__(self,col=-1,value=None,results=None,tb=None,fb=None):
+        self.col=col#待判断条件
+        self.value=value#使结果为True所匹配的值
+        self.results=results
+        #子树节点
+        self.tb=tb
+        self.fb=fb
 #将数据行分为第一组或第二组
 def divideset(rows,column,value):
     split_function = None
@@ -81,3 +89,46 @@ def prune(tree,mingain):
         if delta>mingain:
             tree.tb,tree.fb==None,None
             tree.results=uniquecounts(tb+fb)
+#对新的数据进行分类
+def classify(observation,tree)：
+    if tree.results!=None:
+        return tree.results
+    else:
+        v=observation.col
+        branch=None
+        if isinstance(v,in) or isinstance(v,float):
+            if v>=tree.value: branch=tree.tb
+            else:branch=tree.fb
+        else:
+            if v==tree.value:
+                branch=tree.tb
+            else:
+                branch=tree.fb
+        return classify(observation，branch)
+#处理缺失数据
+def mdclassify(observation,tree):
+    if tree.results!=None:
+        return tree.results
+    else:
+        v = observation[tree.col]
+        if v==None:
+            tr,fr=mdclassify(observation,tree.tb),mdclassify(observation,tree.fb)
+            tcount=sum(tr.values())
+            fcount=sum(fr.values())
+            tw=float(tcount)/(tcount+fcount)
+            fw=float(fcount)/(tcount+fcount)
+            result={}
+            for k,v in tr.item():result[k]=v*tw
+            for k,v in fr.item():
+                if k not in result:result[k]=0
+                result[k] +=v*fw
+            return result
+        else:
+            if isinstance(v,int) or isinstance(v,float):
+                if v>tree.value:
+                    branch=tree.tb
+                else: branch=tree.fb
+            else:
+                if v==tree.value:branch=tree.tb
+                else:branch=tree.fb
+            return mdclassify(observation,branch)
